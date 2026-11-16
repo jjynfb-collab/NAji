@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>فلابي بيرد - النسخة العربية</title>
+    <!-- تحميل خط القاهرة (Cairo) الجميل للغة العربية -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;800;900&display=swap" rel="stylesheet">
+    <!-- تحميل مكتبة Tone.js لتوليد المؤثرات الصوتية برمجياً بدون ملفات خارجية -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        /* إعادة ضبط الهوامش ومنع التحديد أو التمرير العشوائي على الهواتف */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Cairo', sans-serif;
+            background-color: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* حاوية اللعبة الرئيسية المتجاوبة */
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            max-width: 500px; /* عرض مثالي يشبه شاشات الهواتف على الحاسوب */
+            max-height: 900px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            background: linear-gradient(to bottom, #4ec0ca 0%, #8be4ec 100%);
+        }
+
+        /* على الشاشات الصغيرة جداً تأخذ اللعبة كامل الشاشة */
+        @media (max-width: 500px) {
+            #game-container {
+                max-width: 100%;
+                max-height: 100%;
+                box-shadow: none;
+            }
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        /* طبقات واجهة المستخدم فوق الكانفاس */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* السماح بمرور النقرات للكانفاس إلا للأزرار */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+        }
+
+        /* عداد النقاط أثناء اللعب */
+        #score-display {
+            font-size: 4.5rem;
+            font-weight: 900;
+            color: #ffffff;
+            text-shadow: 
+                -3px -3px 0 #2c3e50,  
+                 3px -3px 0 #2c3e50,
+                -3px  3px 0 #2c3e50,
+                 3px  3px 0 #2c3e50,
+                 0px  6px 0 #2c3e50;
+            z-index: 10;
+            transition: transform 0.1s ease;
+            margin-top: 10px;
+        }
+
+        .score-bump {
+            transform: scale(1.25);
+        }
+
+        /* زر كتم/تشغيل الصوت */
+        #sound-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.9);
+            border: 3px solid #2c3e50;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #2c3e50;
+            transition: transform 0.1s, box-shadow 0.1s;
+            z-index: 30;
+        }
+
+        #sound-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #2c3e50;
+        }
+
+        /* شاشات البداية والنهاية (البطاقات) */
+        .modal-card {
+            pointer-events: auto;
+            background: #ded895;
+            border: 4px solid #543847;
+            border-radius: 20px;
+            padding: 25px 30px;
+            text-align: center;
+            box-shadow: 0 10px 0 #543847, 0 15px 30px rgba(0,0,0,0.4);
+            width: 85%;
+            max-width: 340px;
+            margin: auto;
+            z-index: 20;
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.7); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1.game-title {
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: #f39c12;
+            text-shadow: 
+                -2px -2px 0 #543847,  
+                 2px -2px 0 #543847,
+                -2px  2px 0 #543847,
+                 2px  2px 0 #543847,
+                 0px  4px 0 #543847;
+            margin-bottom: 10px;
+            line-height: 1.2;
+        }
+
+        .subtitle {
+            color: #543847;
+            font-size: 1.1rem;
+            font-weight: 800;
+            margin-bottom: 20px;
+        }
+
+        /* لوحة النتائج في نهاية اللعبة */
+        .scoreboard {
+            background: #cbb968;
+            border: 3px solid #9e8d44;
+            border-radius: 12px;
+            padding: 15px;
+            margin: 15px 0 20px 0;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+
+        .score-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .score-label {
+            font-size: 0.9rem;
+            font-weight: 800;
+            color: #7c6d2c;
+        }
+
+        .score-value {
+            font-size: 2rem;
+            font-weight: 900;
+            color: #ffffff;
+            text-shadow: 
+                -1.5px -1.5px 0 #543847,  
+                 1.5px -1.5px 0 #543847,
+                -1.5px  1.5px 0 #543847,
+                 1.5px  1.5px 0 #543847;
+        }
+
+        /* شارة الرقم القياسي الجديد */
+        .new-badge {
+            background: #e74c3c;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 6px;
+            margin-top: 2px;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        /* الأزرار التفاعلية */
+        .action-btn {
+            background: linear-gradient(to bottom, #73bf2e 0%, #559e18 100%);
+            color: white;
+            font-family: 'Cairo', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 900;
+            border: 3px solid #2c3e50;
+            border-radius: 14px;
+            padding: 12px 35px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #2c3e50;
+            transition: all 0.1s ease;
+            width: 100%;
+            text-shadow: 1px 2px 0 #2c3e50;
+        }
+
+        .action-btn:hover {
+            filter: brightness(1.08);
+        }
+
+        .action-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 0 0 #2c3e50;
+        }
+
+        /* أيقونة تعليمات اللمس/القفز */
+        .controls-hint {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.5);
+            padding: 8px 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            color: #543847;
+            font-weight: 800;
+            font-size: 0.95rem;
+        }
+
+        /* تأثير وميض عند الاصطدام */
+        #flash-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 25;
+            transition: opacity 0.1s ease-out;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- كانفاس الرسم الرئيسي -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- طبقة وميض الاصطدام -->
+    <div id="flash-overlay"></div>
+
+    <!-- زر التحكم بالصوت -->
+    <button id="sound-btn" title="تبديل الصوت" aria-label="تبديل الصوت">
+        <!-- أيقونة الصوت (SVG) -->
+        <svg id="sound-on-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2c3e50" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+        </svg>
+        <svg id="sound-off-icon" class="hidden" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+        </svg>
+    </button>
+
+    <!-- واجهة المستخدم العلوية -->
+    <div class="ui-layer">
+        <!-- عداد النقاط المباشر -->
+        <div id="score-display" class="hidden">0</div>
+
+        <!-- شاشة البداية -->
+        <div id="start-screen" class="modal-card">
+            <h1 class="game-title">فلابي بيرد</h1>
+            <p class="subtitle">حلّق عالياً وتجنب الأنابيب!</p>
+            
+            <div class="controls-hint">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#543847" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"></path>
+                    <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"></path>
+                    <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"></path>
+                    <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
+                </svg>
+                <span>المس الشاشة أو اضغط المسافة</span>
+            </div>
+
+            <div class="scoreboard" style="margin-top: 0;">
+                <div class="score-box">
+                    <span class="score-label">أعلى نتيجة</span>
+                    <span id="start-best-score" class="score-value">0</span>
+                </div>
+            </div>
+
+            <button id="start-btn" class="action-btn">ابدأ اللعب</button>
+        </div>
+
+        <!-- شاشة نهاية اللعبة (Game Over) -->
+        <div id="game-over-screen" class="modal-card hidden">
+            <h1 class="game-title" style="color: #e74c3c; font-size: 2.2rem;">انتهت اللعبة!</h1>
+            
+            <div class="scoreboard">
+                <div class="score-box">
+                    <span class="score-label">النتيجة</span>
+                    <span id="final-score" class="score-value">0</span>
+                </div>
+                <div style="width: 2px; height: 50px; background: #9e8d44;"></div>
+                <div class="score-box">
+                    <span class="score-label">الأفضل</span>
+                    <span id="best-score" class="score-value">0</span>
+                    <span id="new-record-badge" class="new-badge hidden">رقم قياسي!</span>
+                </div>
+            </div>
+
+            <button id="restart-btn" class="action-btn">العب مجدداً</button>
+        </div>
+
+        <div></div> <!-- عنصر موازنة سفلي -->
+    </div>
+</div>
+
+<script>
+    /**
+     * نظام الصوت المدمج باستخدام Tone.js
+     * يولد أصوات القفز، تسجيل النقاط، والاصطدام بدون الحاجة لملفات خارجية
+     */
+    class SoundManager {
+        constructor() {
+            this.muted = false;
+            this.initialized = false;
+            this.synth = null;
+        }
+
+        async init() {
+            if (this.initialized) return;
+            try {
+                await Tone.start();
+                this.synth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: "triangle" },
+                    envelope: { attack: 0.01, decay: 0.1, sustain: 0.05, release: 0.1 }
+                }).toDestination();
+                this.synth.volume.value = -8;
+                this.initialized = true;
+            } catch (e) {
+                console.warn("تعذر تهيئة الصوت:", e);
+            }
+        }
+
+        toggleMute() {
+            this.muted = !this.muted;
+            document.getElementById('sound-on-icon').classList.toggle('hidden', this.muted);
+            document.getElementById('sound-off-icon').classList.toggle('hidden', !this.muted);
+        }
+
+        playJump() {
+            if (this.muted || !this.initialized) return;
+            try {
+                // نغمة صاعدة سريعة للقفز
+                this.synth.triggerAttackRelease(["C4", "G4"], "32n");
+            } catch (e) {}
+        }
+
+        playScore() {
+            if (this.muted || !this.initialized) return;
+            try {
+                // رنة كلاسيكية لتسجيل نقطة
+                const now = Tone.now();
+                this.synth.triggerAttackRelease("B5", "32n", now);
+                this.synth.triggerAttackRelease("E6", "16n", now + 0.07);
+            } catch (e) {}
+        }
+
+        playHit() {
+            if (this.muted || !this.initialized) return;
+            try {
+                // صوت اصطدام منخفض
+                this.synth.triggerAttackRelease(["G2", "C2"], "16n");
+            } catch (e) {}
+        }
+    }
+
+    /**
+     * الإعدادات والمتغيرات الرئيسية للعبة
+     */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('game-container');
+    
+    // عناصر واجهة المستخدم
+    const scoreDisplay = document.getElementById('score-display');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const startBtn = document.getElementById('start-btn');
+    const restartBtn = document.getElementById('restart-btn');
+    const soundBtn = document.getElementById('sound-btn');
+    const finalScoreEl = document.getElementById('final-score');
+    const bestScoreEl = document.getElementById('best-score');
+    const startBestScoreEl = document.getElementById('start-best-score');
+    const newRecordBadge = document.getElementById('new-record-badge');
+    const flashOverlay = document.getElementById('flash-overlay');
+
+    const soundManager = new SoundManager();
+
+    // حالات اللعبة: 'START', 'PLAYING', 'GAMEOVER'
+    let gameState = 'START';
+    let score = 0;
+    let bestScore = parseInt(localStorage.getItem('flappy_ar_best')) || 0;
+    startBestScoreEl.textContent = bestScore;
+
+    // متغيرات الأبعاد المتجاوبة
+    let width = 0;
+    let height = 0;
+    let groundHeight = 90;
+
+    // فيزياء اللعبة
+    const GRAVITY = 0.42;
+    const JUMP_STRENGTH = -7.6;
+    const PIPE_SPEED = 2.8;
+    const PIPE_SPAWN_INTERVAL = 105; // عدد الإطارات بين كل أنبوب
+    let frameCount = 0;
+
+    // كائن الطائر
+    const bird = {
+        x: 0,
+        y: 0,
+        radius: 17,
+        velocity: 0,
+        rotation: 0,
+        wingAngle: 0,
+        flapSpeed: 0.25,
+
+        reset() {
+            this.x = width * 0.28;
+            this.y = height * 0.45;
+            this.velocity = 0;
+            this.rotation = 0;
+        },
+
+        jump() {
+            this.velocity = JUMP_STRENGTH;
+            this.flapSpeed = 0.6; // تسريع حركة الجناح عند القفز
+            soundManager.playJump();
+            createParticles(this.x - 10, this.y + 5, 5, '#ffffff');
+        },
+
+        update() {
+            if (gameState === 'START') {
+                // حركة طفو ناعمة في شاشة البداية
+                this.y = (height * 0.42) + Math.sin(frameCount * 0.08) * 8;
+                this.wingAngle += 0.2;
+                return;
+            }
+
+            // تطبيق الجاذبية
+            this.velocity += GRAVITY;
+            this.y += this.velocity;
+
+            // تحديث حركة الجناح
+            this.wingAngle += this.flapSpeed;
+            if (this.flapSpeed > 0.25) this.flapSpeed -= 0.02;
+
+            // حساب زاوية دوران الطائر بناءً على سرعته
+            if (this.velocity < 0) {
+                this.rotation = -25 * (Math.PI / 180);
+            } else {
+                this.rotation += 2.5 * (Math.PI / 180);
+                if (this.rotation > 85 * (Math.PI / 180)) {
+                    this.rotation = 85 * (Math.PI / 180);
+                }
+            }
+
+            // التحقق من الاصطدام بالأرض
+            if (this.y + this.radius >= height - groundHeight) {
+                this.y = height - groundHeight - this.radius;
+                triggerGameOver();
+            }
+
+            // منع الطائر من الخروج أعلى الشاشة
+            if (this.y - this.radius <= 0) {
+                this.y = this.radius;
+                this.velocity = 0;
+            }
+        },
+
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rotation);
+
+            // جسم الطائر (أصفر ذهبي مع تدرج)
+            const bodyGrad = ctx.createRadialGradient(-4, -4, 2, 0, 0, this.radius);
+            bodyGrad.addColorStop(0, '#ffeaa7');
+            bodyGrad.addColorStop(0.7, '#fdcb6e');
+            bodyGrad.addColorStop(1, '#e17055');
+
+            ctx.fillStyle = bodyGrad;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, this.radius + 2, this.radius - 1, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = '#2c3e50';
+            ctx.stroke();
+
+            // بطن الطائر الفاتح
+            ctx.fillStyle = '#fff5d7';
+            ctx.beginPath();
+            ctx.ellipse(2, 6, this.radius - 5, this.radius - 9, 0, 0, Math.PI);
+            ctx.fill();
+
+            // العين (كبيرة ومعبّرة)
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(7, -5, 6.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#2c3e50';
+            ctx.stroke();
+
+            // بؤبؤ العين
+            ctx.fillStyle = '#2c3e50';
+            ctx.beginPath();
+            ctx.arc(9, -5, 2.8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // لمعة العين
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(10, -6.5, 1.2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // المنقار (برتقالي مزدوج)
+            // الجزء العلوي
+            ctx.fillStyle = '#e67e22';
+            ctx.beginPath();
+            ctx.moveTo(12, -1);
+            ctx.quadraticCurveTo(24, 0, 22, 4);
+            ctx.lineTo(12, 4);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // الجزء السفلي
+            ctx.fillStyle = '#d35400';
+            ctx.beginPath();
+            ctx.moveTo(12, 4);
+            ctx.lineTo(20, 4);
+            ctx.quadraticCurveTo(20, 8, 12, 8);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // الجناح المتحرك
+            const wingYOffset = Math.sin(this.wingAngle) * 4;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.ellipse(-4, 2 + wingYOffset, 9, 6, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#2c3e50';
+            ctx.stroke();
+
+            ctx.restore();
+        }
+    };
+
+    // مصفوفة الأنابيب
+    let pipes = [];
+
+    class Pipe {
+        constructor() {
+            this.width = 64;
+            this.x = width + 20;
+            // الفتحة بين الأنبوب العلوي والسفلي تتناسب مع ارتفاع الشاشة
+            this.gap = Math.max(135, Math.min(165, height * 0.23));
+            const minTopHeight = 60;
+            const maxTopHeight = height - groundHeight - this.gap - 60;
+            this.topHeight = Math.floor(Math.random() * (maxTopHeight - minTopHeight + 1)) + minTopHeight;
+            this.bottomY = this.topHeight + this.gap;
+            this.passed = false;
+        }
+
+        update() {
+            this.x -= PIPE_SPEED;
+
+            // التحقق من تجاوز الطائر للأنبوب لاحتساب نقطة
+            if (!this.passed && this.x + this.width < bird.x) {
+                this.passed = true;
+                incrementScore();
+            }
+
+            // التحقق من الاصطدام (باستخدام صندوق تصادم متسامح قليلاً لتجربة لعب عادلة)
+            const hitMargin = 4;
+            const birdLeft = bird.x - bird.radius + hitMargin;
+            const birdRight = bird.x + bird.radius - hitMargin;
+            const birdTop = bird.y - bird.radius + hitMargin;
+            const birdBottom = bird.y + bird.radius - hitMargin;
+
+            if (birdRight > this.x && birdLeft < this.x + this.width) {
+                if (birdTop < this.topHeight || birdBottom > this.bottomY) {
+                    triggerGameOver();
+                }
+            }
+        }
+
+        draw() {
+            // رسم الأنبوب العلوي
+            this.drawSinglePipe(this.x, 0, this.width, this.topHeight, true);
+            // رسم الأنبوب السفلي
+            this.drawSinglePipe(this.x, this.bottomY, this.width, height - groundHeight - this.bottomY, false);
+        }
+
+        drawSinglePipe(x, y, w, h, isTop) {
+            if (h <= 0) return;
+
+            // تدرج لوني ثلاثي الأبعاد للأنبوب الأخضر
+            const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+            grad.addColorStop(0, '#559e18');
+            grad.addColorStop(0.25, '#8ce03f');
+            grad.addColorStop(0.5, '#73bf2e');
+            grad.addColorStop(0.85, '#4b8b14');
+            grad.addColorStop(1, '#396b0e');
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(x, y, w, h);
+
+            // حدود الأنبوب
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = '#2c3e50';
+            ctx.strokeRect(x, y, w, h);
+
+            // فوهة الأنبوب (الحافة البارزة)
+            const capHeight = 26;
+            const capOverhang = 4;
+            const capY = isTop ? y + h - capHeight : y;
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(x - capOverhang, capY, w + capOverhang * 2, capHeight);
+            ctx.strokeRect(x - capOverhang, capY, w + capOverhang * 2, capHeight);
+
+            // خط إضاءة عمودي لإعطاء لمعان
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.fillRect(x + 8, y, 6, h);
+        }
+    }
+
+    // عناصر الخلفية المتحركة (السحب، التلال، والأرض)
+    let clouds = [];
+    let groundOffset = 0;
+
+    function initBackground() {
+        clouds = [];
+        for (let i = 0; i < 5; i++) {
+            clouds.push({
+                x: Math.random() * width,
+                y: Math.random() * (height * 0.45) + 20,
+                speed: 0.3 + Math.random() * 0.4,
+                scale: 0.6 + Math.random() * 0.6
+            });
+        }
+    }
+
+    function drawBackground() {
+        // السحب البيضاء الناعمة
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        clouds.forEach(cloud => {
+            if (gameState !== 'GAMEOVER') {
+                cloud.x -= cloud.speed;
+                if (cloud.x < -100) cloud.x = width + 100;
+            }
+
+            ctx.save();
+            ctx.translate(cloud.x, cloud.y);
+            ctx.scale(cloud.scale, cloud.scale);
+            ctx.beginPath();
+            ctx.arc(0, 0, 25, 0, Math.PI * 2);
+            ctx.arc(20, -10, 30, 0, Math.PI * 2);
+            ctx.arc(45, 0, 25, 0, Math.PI * 2);
+            ctx.arc(22, 10, 22, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        });
+
+        // مدينة / تلال بعيدة في الأفق
+        const horizonY = height - groundHeight;
+        ctx.fillStyle = '#a3e4d7';
+        for (let x = 0; x < width + 60; x += 60) {
+            const h = 40 + Math.sin(x * 0.05) * 20;
+            ctx.fillRect(x, horizonY - h, 62, h);
+        }
+
+        // شجيرات خضراء في الخلفية
+        ctx.fillStyle = '#82e0aa';
+        for (let x = -20; x < width + 40; x += 45) {
+            ctx.beginPath();
+            ctx.arc(x, horizonY, 28, Math.PI, 0);
+            ctx.fill();
+        }
+    }
+
+    function drawGround() {
+        const groundY = height - groundHeight;
+
+        if (gameState !== 'GAMEOVER') {
+            groundOffset = (groundOffset + PIPE_SPEED) % 32;
+        }
+
+        // الشريط العشبي العلوي للأرض
+        ctx.fillStyle = '#73bf2e';
+        ctx.fillRect(0, groundY, width, 18);
+
+        // خطوط مائلة متحركة على العشب لإعطاء إحساس بالسرعة
+        ctx.fillStyle = '#9ce659';
+        for (let x = -32; x < width + 32; x += 32) {
+            ctx.beginPath();
+            ctx.moveTo(x - groundOffset, groundY);
+            ctx.lineTo(x + 16 - groundOffset, groundY);
+            ctx.lineTo(x + 6 - groundOffset, groundY + 18);
+            ctx.lineTo(x - 10 - groundOffset, groundY + 18);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // التربة الرملية السفلية
+        ctx.fillStyle = '#ded895';
+        ctx.fillRect(0, groundY + 18, width, groundHeight - 18);
+
+        // خط فاصل داكن للأرض
+        ctx.strokeStyle = '#2c3e50';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, groundY);
+        ctx.lineTo(width, groundY);
+        ctx.stroke();
+
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, groundY + 18);
+        ctx.lineTo(width, groundY + 18);
+        ctx.stroke();
+    }
+
+    // نظام الجزيئات (Particles) للتأثيرات البصرية
+    let particles = [];
+
+    function createParticles(x, y, count, color) {
+        for (let i = 0; i < count; i++) {
+            particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 4 - 1,
+                vy: (Math.random() - 0.5) * 4,
+                size: Math.random() * 4 + 2,
+                alpha: 1,
+                color: color
+            });
+        }
+    }
+
+    function updateAndDrawParticles() {
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.alpha -= 0.04;
+
+            if (p.alpha <= 0) {
+                particles.splice(i, 1);
+                continue;
+            }
+
+            ctx.save();
+            ctx.globalAlpha = p.alpha;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    /**
+     * وظائف التحكم بحالة اللعبة
+     */
+    function startGame() {
+        soundManager.init();
+        gameState = 'PLAYING';
+        score = 0;
+        pipes = [];
+        particles = [];
+        frameCount = 0;
+
+        bird.reset();
+        bird.jump(); // قفزة البداية
+
+        scoreDisplay.textContent = '0';
+        scoreDisplay.classList.remove('hidden');
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+    }
+
+    function incrementScore() {
+        score++;
+        scoreDisplay.textContent = score;
+        soundManager.playScore();
+
+        // تأثير تكبير بسيط للعداد
+        scoreDisplay.classList.add('score-bump');
+        setTimeout(() => scoreDisplay.classList.remove('score-bump'), 120);
+    }
+
+    function triggerGameOver() {
+        if (gameState === 'GAMEOVER') return;
+        gameState = 'GAMEOVER';
+        soundManager.playHit();
+
+        // وميض أبيض سريع على الشاشة
+        flashOverlay.style.opacity = '0.7';
+        setTimeout(() => { flashOverlay.style.opacity = '0'; }, 100);
+
+        // التحقق من الرقم القياسي وتحديثه
+        let isNewRecord = false;
+        if (score > bestScore) {
+            bestScore = score;
+            localStorage.setItem('flappy_ar_best', bestScore);
+            isNewRecord = true;
+        }
+
+        // تحديث واجهة شاشة النهاية
+        finalScoreEl.textContent = score;
+        bestScoreEl.textContent = bestScore;
+        startBestScoreEl.textContent = bestScore;
+        newRecordBadge.classList.toggle('hidden', !isNewRecord);
+
+        scoreDisplay.classList.add('hidden');
+        setTimeout(() => {
+            gameOverScreen.classList.remove('hidden');
+        }, 350);
+    }
+
+    /**
+     * ضبط أبعاد الكانفاس لتتناسب مع الحاوية والشاشة بدقة عالية
+     */
+    function resizeCanvas() {
+        const rect = container.getBoundingClientRect();
+        width = rect.width;
+        height = rect.height;
+
+        // دعم شاشات الريتينا (High DPI) لرسومات فائقة الوضوح
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        ctx.scale(dpr, dpr);
+
+        groundHeight = Math.max(75, height * 0.13);
+
+        if (gameState === 'START') {
+            bird.reset();
+        }
+        initBackground();
+    }
+
+    /**
+     * الحلقة الرئيسية للعبة (Game Loop)
+     */
+    function gameLoop() {
+        // مسح الشاشة
+        ctx.clearRect(0, 0, width, height);
+
+        // رسم الخلفية
+        drawBackground();
+
+        // تحديث ورسم الأنابيب
+        if (gameState === 'PLAYING') {
+            if (frameCount % PIPE_SPAWN_INTERVAL === 0) {
+                pipes.push(new Pipe());
+            }
+
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                pipes[i].update();
+                pipes[i].draw();
+
+                // حذف الأنابيب التي خرجت من الشاشة
+                if (pipes[i].x + pipes[i].width < -20) {
+                    pipes.splice(i, 1);
+                }
+            }
+            frameCount++;
+        } else {
+            // رسم الأنابيب المتوقفة عند الخسارة
+            pipes.forEach(pipe => pipe.draw());
+            if (gameState === 'START') frameCount++;
+        }
+
+        // رسم الأرض
+        drawGround();
+
+        // تحديث ورسم الجزيئات والطائر
+        updateAndDrawParticles();
+        bird.update();
+        bird.draw();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    /**
+     * مستمعات الأحداث (اللمس، الفأرة، ولوحة المفاتيح)
+     */
+    function handleInput(e) {
+        // تجاهل النقر إذا كان على زر الصوت أو أزرار القوائم
+        if (e.target.closest('button')) return;
+
+        if (e.type === 'touchstart') {
+            e.preventDefault(); // منع التكبير أو التمرير المزدوج على الهواتف
+        }
+
+        if (gameState === 'PLAYING') {
+            bird.jump();
+        }
+    }
+
+    // أحداث اللمس والنقر على منطقة اللعب
+    canvas.addEventListener('mousedown', handleInput);
+    canvas.addEventListener('touchstart', handleInput, { passive: false });
+
+    // أحداث لوحة المفاتيح (المسافة أو السهم العلوي)
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowUp') {
+            e.preventDefault();
+            if (gameState === 'PLAYING') {
+                bird.jump();
+            } else if (gameState === 'START') {
+                startGame();
+            } else if (gameState === 'GAMEOVER' && !gameOverScreen.classList.contains('hidden')) {
+                startGame();
+            }
+        }
+    });
+
+    // أزرار الواجهة
+    startBtn.addEventListener('click', startGame);
+    restartBtn.addEventListener('click', startGame);
+    soundBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        soundManager.init();
+        soundManager.toggleMute();
+    });
+
+    // بدء التشغيل عند اكتمال تحميل الصفحة
+    window.addEventListener('resize', resizeCanvas);
+    window.onload = () => {
+        resizeCanvas();
+        bird.reset();
+        gameLoop();
+    };
+</script>
+</body>
+  </html>
